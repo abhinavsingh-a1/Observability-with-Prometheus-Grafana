@@ -1,0 +1,102 @@
+# Prometheus configuration for the Observability Lab.
+# Reload without restart:  curl -X POST http://localhost:9090/-/reload
+
+global:
+  scrape_interval: 15s       # how often targets are scraped
+  evaluation_interval: 15s   # how often alert/recording rules are evaluated
+  external_labels:
+    lab: observability-lab
+
+# Every project ships its own rules next to its README.
+rule_files:
+  - /lab/projects/*/recording.yml
+  - /lab/projects/*/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # --- the monitoring stack monitors itself -------------------------------
+  - job_name: prometheus
+    static_configs: [{ targets: ["localhost:9090"] }]
+  - job_name: alertmanager
+    static_configs: [{ targets: ["alertmanager:9093"] }]
+  - job_name: grafana
+    static_configs: [{ targets: ["grafana:3000"] }]
+
+  # --- applications (projects 1-5) ----------------------------------------
+  - job_name: apps
+    static_configs:
+      - targets: ["orders-api:8080", "payments-api:8080"]
+
+  # --- infrastructure (projects 6, 7, 10, 11, 12) -------------------------
+  - job_name: node
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+        labels: { host: lab-host }
+  - job_name: cadvisor
+    static_configs: [{ targets: ["cadvisor:8080"] }]
+
+  # --- optional dependencies (projects 13, 14) -----------------------------
+  # Targets come from files. `make db-on` / `make mq-on` copy them into
+  # file_sd/enabled/, so nothing is scraped (and nothing alerts) until the
+  # profile is really running.
+  - job_name: postgres
+    file_sd_configs: [{ files: ["/etc/prometheus/file_sd/enabled/postgres*.json"], refresh_interval: 30s }]
+  - job_name: redis
+    file_sd_configs: [{ files: ["/etc/prometheus/file_sd/enabled/redis*.json"], refresh_interval: 30s }]
+  - job_name: kafka
+    file_sd_configs: [{ files: ["/etc/prometheus/file_sd/enabled/kafka*.json"], refresh_interval: 30s }]
+
+  # --- synthetic monitoring (project 15) -----------------------------------
+  - job_name: blackbox-exporter
+    static_configs: [{ targets: ["blackbox-exporter:9115"] }]
+
+  # The standard blackbox pattern: the *target* becomes a URL parameter and
+  # Prometheus actually scrapes the exporter.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params: { module: [http_2xx] }
+    static_configs:
+      - targets:
+          - http://orders-api:8080/healthz
+          - http://payments-api:8080/healthz
+          - http://grafana:3000/api/health
+          - https://prometheus.io
+          - https://example.com
+    relabel_configs: &blackbox_relabel
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-cert
+    # Skips TLS verification so we can still read the expiry date of a BAD cert.
+    metrics_path: /probe
+    params: { module: [http_2xx_insecure] }
+    static_configs:
+      - targets: ["https://expired.badssl.com", "https://prometheus.io"]
+    relabel_configs: *blackbox_relabel
+
+  - job_name: blackbox-tcp
+    metrics_path: /probe
+    params: { module: [tcp_connect] }
+    static_configs:
+      - targets: ["grafana:3000", "prometheus:9090", "alertmanager:9093"]
+    relabel_configs: *blackbox_relabel
+
+  - job_name: blackbox-icmp
+    metrics_path: /probe
+    params: { module: [icmp] }
+    static_configs: [{ targets: ["1.1.1.1", "8.8.8.8"] }]
+    relabel_configs: *blackbox_relabel
+
+  - job_name: blackbox-dns
+    metrics_path: /probe
+    params: { module: [dns_prometheus_io] }
+    static_configs: [{ targets: ["1.1.1.1", "8.8.8.8"] }]
+    relabel_configs: *blackbox_relabel

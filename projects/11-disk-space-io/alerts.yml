@@ -1,0 +1,54 @@
+groups:
+  - name: 11-disk-space-io
+    rules:
+      - alert: HostDiskWillFillIn4Hours
+        # Linear prediction over the last hour; only for disks already >60% used
+        # (avoids noise from a nearly empty disk that is being written to).
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*|ramfs"}[1h], 4 * 3600) < 0
+          and on (instance, device, mountpoint)
+          (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 0.6
+          and on (instance, device, mountpoint) node_filesystem_readonly == 0
+        for: 5m
+        labels: { severity: warning, project: "11" }
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} will be full within 4 hours"
+          runbook: projects/11-disk-space-io/README.md#runbook
+
+      - alert: HostDiskSpaceLow
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*|ramfs"}
+            / node_filesystem_size_bytes < 0.10
+          and on (instance, device, mountpoint) node_filesystem_readonly == 0
+        for: 2m
+        labels: { severity: critical, project: "11" }
+        annotations:
+          summary: "{{ $labels.mountpoint }} has only {{ $value | humanizePercentage }} free"
+          runbook: projects/11-disk-space-io/README.md#runbook
+
+      - alert: HostInodesLow
+        expr: |
+          node_filesystem_files_free{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*|ramfs"}
+            / node_filesystem_files < 0.10
+        for: 5m
+        labels: { severity: critical, project: "11" }
+        annotations:
+          summary: "{{ $labels.mountpoint }} is running out of inodes ({{ $value | humanizePercentage }} free)"
+          description: "'No space left on device' even though bytes are free: millions of tiny files."
+          runbook: projects/11-disk-space-io/README.md#runbook
+
+      - alert: HostFilesystemReadOnly
+        expr: node_filesystem_readonly{fstype!~"tmpfs|overlay|squashfs|nsfs|fuse.*|ramfs|iso9660"} == 1
+        for: 1m
+        labels: { severity: critical, project: "11" }
+        annotations:
+          summary: "{{ $labels.mountpoint }} was remounted read-only (disk error?)"
+          runbook: projects/11-disk-space-io/README.md#runbook
+
+      - alert: HostDiskSaturated
+        expr: rate(node_disk_io_time_seconds_total[5m]) > 0.9
+        for: 10m
+        labels: { severity: warning, project: "11" }
+        annotations:
+          summary: "Disk {{ $labels.device }} is busy {{ $value | humanizePercentage }} of the time"
+          runbook: projects/11-disk-space-io/README.md#runbook

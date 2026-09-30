@@ -1,0 +1,47 @@
+groups:
+  - name: 04-runtime-health
+    rules:
+      - alert: ProcessMemoryHigh
+        expr: process_resident_memory_bytes{job="apps"} > 200 * 1024 * 1024
+        for: 2m
+        labels: { severity: warning, project: "04" }
+        annotations:
+          summary: "{{ $labels.instance }} uses {{ $value | humanize1024 }}B of memory"
+          description: "Container limit is 256MiB. Above 200MiB the process is close to an OOM kill."
+          runbook: projects/04-runtime-health/README.md#runbook
+
+      - alert: ProcessMemoryLeakSuspected
+        # Linear prediction: memory will exceed the 256MiB limit within 1 hour
+        expr: |
+          predict_linear(process_resident_memory_bytes{job="apps"}[15m], 3600) > 256 * 1024 * 1024
+          and deriv(process_resident_memory_bytes{job="apps"}[15m]) > 0
+        for: 5m
+        labels: { severity: warning, project: "04" }
+        annotations:
+          summary: "{{ $labels.instance }} memory is growing steadily (possible leak)"
+          description: "At the current growth rate it reaches the 256MiB limit within 1 hour."
+          runbook: projects/04-runtime-health/README.md#runbook
+
+      - alert: ProcessHighCpu
+        expr: rate(process_cpu_seconds_total{job="apps"}[5m]) > 0.4
+        for: 5m
+        labels: { severity: warning, project: "04" }
+        annotations:
+          summary: "{{ $labels.instance }} uses {{ $value | humanize }} CPU cores (limit 0.5)"
+          runbook: projects/04-runtime-health/README.md#runbook
+
+      - alert: FileDescriptorsExhausting
+        expr: process_open_fds{job="apps"} / process_max_fds{job="apps"} > 0.8
+        for: 5m
+        labels: { severity: critical, project: "04" }
+        annotations:
+          summary: "{{ $labels.instance }} uses {{ $value | humanizePercentage }} of its file descriptors"
+          description: "Next: 'too many open files' errors. Usually a connection/file leak."
+          runbook: projects/04-runtime-health/README.md#runbook
+
+      - alert: ProcessRestarted
+        expr: changes(process_start_time_seconds{job="apps"}[15m]) > 0
+        labels: { severity: info, project: "04" }
+        annotations:
+          summary: "{{ $labels.instance }} restarted in the last 15 minutes"
+          runbook: projects/04-runtime-health/README.md#runbook

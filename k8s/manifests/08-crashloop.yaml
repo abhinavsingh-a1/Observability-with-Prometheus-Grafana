@@ -1,0 +1,17 @@
+# Starts, prints a line, exits with code 1 after 10s -> CrashLoopBackOff
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: crashloop-demo, namespace: lab }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: crashloop-demo } }
+  template:
+    metadata: { labels: { app: crashloop-demo } }
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["sh", "-c", "echo 'starting...'; sleep 10; echo 'fatal: config missing' >&2; exit 1"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }

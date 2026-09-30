@@ -1,0 +1,52 @@
+# Docker / cAdvisor version. The Kubernetes version of these rules lives in
+# k8s/lab-rules.yaml (uses kube_pod_container_resource_limits).
+groups:
+  - name: 06-container-resources
+    rules:
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          sum by (name) (container_memory_working_set_bytes{name=~"lab-.+"})
+            / on (name) (sum by (name) (container_spec_memory_limit_bytes{name=~"lab-.+"}) > 0) > 0.85
+        for: 2m
+        labels: { severity: warning, project: "06" }
+        annotations:
+          summary: "{{ $labels.name }} uses {{ $value | humanizePercentage }} of its memory limit"
+          description: "At 100% the kernel OOM-kills the container."
+          runbook: projects/06-container-resources/README.md#runbook
+
+      - alert: ContainerMemoryCritical
+        expr: |
+          sum by (name) (container_memory_working_set_bytes{name=~"lab-.+"})
+            / on (name) (sum by (name) (container_spec_memory_limit_bytes{name=~"lab-.+"}) > 0) > 0.95
+        for: 1m
+        labels: { severity: critical, project: "06" }
+        annotations:
+          summary: "{{ $labels.name }} is about to be OOM-killed ({{ $value | humanizePercentage }} of limit)"
+          runbook: projects/06-container-resources/README.md#runbook
+
+      - alert: ContainerCpuNearLimit
+        expr: |
+          sum by (name) (rate(container_cpu_usage_seconds_total{name=~"lab-.+"}[5m]))
+            / on (name) (sum by (name) (container_spec_cpu_quota{name=~"lab-.+"}) / sum by (name) (container_spec_cpu_period{name=~"lab-.+"}))
+            > 0.9
+        for: 5m
+        labels: { severity: warning, project: "06" }
+        annotations:
+          summary: "{{ $labels.name }} uses {{ $value | humanizePercentage }} of its CPU limit"
+          description: "It will be throttled - see project 07."
+          runbook: projects/06-container-resources/README.md#runbook
+
+      - alert: ContainerRestarted
+        expr: changes(container_start_time_seconds{name=~"lab-.+"}[15m]) > 0
+        labels: { severity: warning, project: "06" }
+        annotations:
+          summary: "{{ $labels.name }} restarted {{ $value }} time(s) in 15m"
+          runbook: projects/06-container-resources/README.md#runbook
+
+      - alert: ContainerOOMKilled
+        # Only works if your cAdvisor exposes OOM events; otherwise rely on ContainerRestarted
+        expr: increase(container_oom_events_total{name=~"lab-.+"}[15m]) > 0
+        labels: { severity: critical, project: "06" }
+        annotations:
+          summary: "{{ $labels.name }} was OOM-killed"
+          runbook: projects/06-container-resources/README.md#runbook

@@ -1,0 +1,1 @@
+[{ "targets": ["kafka-exporter:9308"], "labels": { "cluster": "lab-kafka" } }]

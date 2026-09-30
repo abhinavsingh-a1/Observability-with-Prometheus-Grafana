@@ -1,0 +1,31 @@
+# SLIs pre-computed for every window used by the burn-rate alerts.
+# Recording rules make dashboards fast and alert expressions readable.
+groups:
+  - name: 05-slo-availability-sli
+    interval: 30s
+    rules:
+      - record: service:sli_errors:ratio_rate5m
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[5m])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[5m]))
+      - record: service:sli_errors:ratio_rate30m
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[30m])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[30m]))
+      - record: service:sli_errors:ratio_rate1h
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[1h])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[1h]))
+      - record: service:sli_errors:ratio_rate2h
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[2h])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[2h]))
+      - record: service:sli_errors:ratio_rate6h
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[6h])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[6h]))
+      - record: service:sli_errors:ratio_rate1d
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[1d])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[1d]))
+      - record: service:sli_errors:ratio_rate3d
+        expr: sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[3d])) / sum by (service) (rate(http_requests_total{route!="/healthz"}[3d]))
+      - record: service:sli_errors:ratio_rate30d
+        expr: sum by (service) (increase(http_requests_total{status=~"5..",route!="/healthz"}[30d])) / sum by (service) (increase(http_requests_total{route!="/healthz"}[30d]))
+
+  - name: 05-slo-latency-sli
+    interval: 30s
+    rules:
+      # "bad" = slower than 500ms
+      - record: service:sli_latency_bad:ratio_rate5m
+        expr: 1 - (sum by (service) (rate(http_request_duration_seconds_bucket{le="0.5",route!="/healthz"}[5m])) / sum by (service) (rate(http_request_duration_seconds_count{route!="/healthz"}[5m])))
+      - record: service:sli_latency_bad:ratio_rate1h
+        expr: 1 - (sum by (service) (rate(http_request_duration_seconds_bucket{le="0.5",route!="/healthz"}[1h])) / sum by (service) (rate(http_request_duration_seconds_count{route!="/healthz"}[1h])))

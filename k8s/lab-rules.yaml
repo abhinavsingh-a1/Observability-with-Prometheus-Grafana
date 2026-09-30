@@ -1,0 +1,107 @@
+# Kubernetes-track rules (projects 06-k8s, 07-k8s, 08, 09).
+# kube-prometheus-stack already ships similar rules (KubePodCrashLooping,
+# KubeDeploymentReplicasMismatch, CPUThrottlingHigh ...). These "Lab*" versions
+# are simpler, commented, and scoped to the `lab` namespace so you can study them.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-lab
+  namespace: monitoring
+spec:
+  groups:
+    - name: 06-k8s-container-resources
+      rules:
+        - alert: LabPodMemoryNearLimit
+          expr: |
+            sum by (namespace, pod, container) (container_memory_working_set_bytes{namespace="lab", container!="", container!="POD"})
+              / on (namespace, pod, container)
+            sum by (namespace, pod, container) (kube_pod_container_resource_limits{namespace="lab", resource="memory"}) > 0.85
+          for: 2m
+          labels: { severity: warning, project: "06" }
+          annotations:
+            summary: "{{ $labels.pod }}/{{ $labels.container }} uses {{ $value | humanizePercentage }} of its memory limit"
+
+    - name: 07-k8s-cpu-throttling
+      rules:
+        - alert: LabPodCpuThrottling
+          expr: |
+            sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace="lab", container!=""}[5m]))
+              / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{namespace="lab", container!=""}[5m])) > 0.25
+          for: 5m
+          labels: { severity: warning, project: "07" }
+          annotations:
+            summary: "{{ $labels.pod }}/{{ $labels.container }} throttled in {{ $value | humanizePercentage }} of periods"
+
+    - name: 08-pod-restarts
+      rules:
+        - alert: LabPodCrashLooping
+          expr: kube_pod_container_status_waiting_reason{namespace="lab", reason="CrashLoopBackOff"} == 1
+          for: 2m
+          labels: { severity: critical, project: "08" }
+          annotations:
+            summary: "{{ $labels.pod }}/{{ $labels.container }} is in CrashLoopBackOff"
+            description: "kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} -c {{ $labels.container }} --previous"
+        - alert: LabPodRestartingOften
+          expr: increase(kube_pod_container_status_restarts_total{namespace="lab"}[15m]) > 3
+          labels: { severity: warning, project: "08" }
+          annotations:
+            summary: "{{ $labels.pod }}/{{ $labels.container }} restarted {{ $value | humanize }} times in 15m"
+        - alert: LabContainerOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{namespace="lab", reason="OOMKilled"} == 1
+            and on (namespace, pod, container)
+            increase(kube_pod_container_status_restarts_total{namespace="lab"}[15m]) > 0
+          labels: { severity: critical, project: "08" }
+          annotations:
+            summary: "{{ $labels.pod }}/{{ $labels.container }} was OOMKilled"
+            description: "Raise the memory limit or fix the leak (see project 04)."
+        - alert: LabContainerWaiting
+          expr: kube_pod_container_status_waiting_reason{namespace="lab", reason=~"ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError"} == 1
+          for: 3m
+          labels: { severity: warning, project: "08" }
+          annotations:
+            summary: "{{ $labels.pod }}/{{ $labels.container }} stuck in {{ $labels.reason }}"
+
+    - name: 09-deployment-health
+      rules:
+        - alert: LabDeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace="lab"} != kube_deployment_status_replicas_available{namespace="lab"}
+          for: 3m
+          labels: { severity: warning, project: "09" }
+          annotations:
+            summary: "{{ $labels.deployment }}: {{ $value }} available replicas, desired differs"
+        - alert: LabDeploymentRolloutStuck
+          expr: kube_deployment_status_condition{namespace="lab", condition="Progressing", status="false"} == 1
+          for: 1m
+          labels: { severity: critical, project: "09" }
+          annotations:
+            summary: "Rollout of {{ $labels.deployment }} exceeded its progress deadline"
+            description: "kubectl -n lab rollout undo deployment/{{ $labels.deployment }}"
+        - alert: LabDeploymentGenerationMismatch
+          expr: kube_deployment_status_observed_generation{namespace="lab"} != kube_deployment_metadata_generation{namespace="lab"}
+          for: 10m
+          labels: { severity: warning, project: "09" }
+          annotations:
+            summary: "Controller has not observed the latest spec of {{ $labels.deployment }}"
+        - alert: LabPodPending
+          expr: sum by (namespace, pod) (kube_pod_status_phase{namespace="lab", phase="Pending"}) == 1
+          for: 3m
+          labels: { severity: warning, project: "09" }
+          annotations:
+            summary: "{{ $labels.pod }} has been Pending for 3+ minutes"
+            description: "kubectl -n lab describe pod {{ $labels.pod }}  (look at Events)"
+        - alert: LabPodUnschedulable
+          expr: kube_pod_status_unschedulable{namespace="lab"} == 1
+          for: 2m
+          labels: { severity: warning, project: "09" }
+          annotations:
+            summary: "{{ $labels.pod }} cannot be scheduled on any node"
+        - alert: LabHpaMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="lab"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="lab"}
+          for: 15m
+          labels: { severity: info, project: "09" }
+          annotations:
+            summary: "HPA {{ $labels.horizontalpodautoscaler }} is at max replicas - no headroom to scale"

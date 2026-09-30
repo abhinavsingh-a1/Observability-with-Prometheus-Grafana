@@ -1,0 +1,4 @@
+prometheus/file_sd/enabled/*.json
+__pycache__/
+*.pyc
+.env

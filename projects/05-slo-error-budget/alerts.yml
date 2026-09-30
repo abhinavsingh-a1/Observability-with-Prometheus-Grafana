@@ -1,0 +1,72 @@
+# Multi-window, multi-burn-rate alerts (Google SRE Workbook, chapter 5).
+# SLO = 99.9% availability over 30 days  ->  error budget = 0.001
+#
+# burn rate | long window | short window | budget spent when it fires | action
+#   14.4x   |     1h      |      5m      | 2% in 1h                   | page
+#    6x     |     6h      |     30m      | 5% in 6h                   | page
+#    3x     |     1d      |      2h      | 10% in 1d                  | ticket
+#    1x     |     3d      |      6h      | 10% in 3d                  | ticket
+# The short window makes the alert resolve quickly once the problem is fixed.
+groups:
+  - name: 05-slo-burn-rate
+    rules:
+      - alert: SLOErrorBudgetBurnFast
+        expr: |
+          service:sli_errors:ratio_rate1h > (14.4 * 0.001)
+          and service:sli_errors:ratio_rate5m > (14.4 * 0.001)
+        for: 2m
+        labels: { severity: critical, project: "05", slo: availability-99.9 }
+        annotations:
+          summary: "{{ $labels.service }} is burning its 30-day error budget 14x too fast"
+          description: "At this rate the whole monthly budget is gone in ~2 days."
+          runbook: projects/05-slo-error-budget/README.md#runbook
+
+      - alert: SLOErrorBudgetBurnMedium
+        expr: |
+          service:sli_errors:ratio_rate6h > (6 * 0.001)
+          and service:sli_errors:ratio_rate30m > (6 * 0.001)
+        for: 15m
+        labels: { severity: critical, project: "05", slo: availability-99.9 }
+        annotations:
+          summary: "{{ $labels.service }} is burning its error budget 6x too fast"
+          runbook: projects/05-slo-error-budget/README.md#runbook
+
+      - alert: SLOErrorBudgetBurnSlow
+        expr: |
+          service:sli_errors:ratio_rate1d > (3 * 0.001)
+          and service:sli_errors:ratio_rate2h > (3 * 0.001)
+        for: 1h
+        labels: { severity: warning, project: "05", slo: availability-99.9 }
+        annotations:
+          summary: "{{ $labels.service }} is burning its error budget 3x too fast"
+          runbook: projects/05-slo-error-budget/README.md#runbook
+
+      - alert: SLOErrorBudgetBurnVerySlow
+        expr: |
+          service:sli_errors:ratio_rate3d > 0.001
+          and service:sli_errors:ratio_rate6h > 0.001
+        for: 3h
+        labels: { severity: warning, project: "05", slo: availability-99.9 }
+        annotations:
+          summary: "{{ $labels.service }} is spending error budget faster than sustainable"
+          runbook: projects/05-slo-error-budget/README.md#runbook
+
+      - alert: SLOErrorBudgetExhausted
+        expr: service:sli_errors:ratio_rate30d > 0.001
+        for: 5m
+        labels: { severity: warning, project: "05", slo: availability-99.9 }
+        annotations:
+          summary: "{{ $labels.service }} has used its entire 30-day error budget"
+          description: "Policy: freeze risky releases, focus on reliability work."
+          runbook: projects/05-slo-error-budget/README.md#runbook
+
+      - alert: SLOLatencyBudgetBurnFast
+        # Latency SLO: 99% < 500ms -> budget 0.01
+        expr: |
+          service:sli_latency_bad:ratio_rate1h > (14.4 * 0.01)
+          and service:sli_latency_bad:ratio_rate5m > (14.4 * 0.01)
+        for: 2m
+        labels: { severity: critical, project: "05", slo: latency-99-500ms }
+        annotations:
+          summary: "{{ $labels.service }} latency SLO budget burning 14x too fast"
+          runbook: projects/05-slo-error-budget/README.md#runbook

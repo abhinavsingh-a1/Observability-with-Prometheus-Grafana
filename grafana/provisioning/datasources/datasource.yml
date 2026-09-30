@@ -1,0 +1,17 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus          # dashboards reference this uid
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s      # matches scrape_interval -> correct $__rate_interval
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus

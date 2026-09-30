@@ -1,0 +1,35 @@
+# A healthy deployment we will break in several ways (see project 09 README)
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: web, namespace: lab }
+spec:
+  replicas: 3
+  progressDeadlineSeconds: 60      # short so "stuck rollout" shows up quickly
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1, maxSurge: 1 }
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports: [{ containerPort: 80 }]
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: web, namespace: lab }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
+  minReplicas: 3
+  maxReplicas: 3                  # min == max: HPA is "maxed out" -> teaches the HPA alert
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 80 } }

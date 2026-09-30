@@ -1,0 +1,39 @@
+groups:
+  - name: 03-latency
+    rules:
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, service) (rate(http_request_duration_seconds_bucket{route!="/healthz"}[5m]))
+          ) > 0.5
+        for: 3m
+        labels: { severity: warning, project: "03" }
+        annotations:
+          summary: "{{ $labels.service }} p95 latency is {{ $value | humanizeDuration }}"
+          description: "95% of requests should finish within 500ms."
+          runbook: projects/03-latency/README.md#runbook
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le, service) (rate(http_request_duration_seconds_bucket{route!="/healthz"}[5m]))
+          ) > 1.5
+        for: 3m
+        labels: { severity: critical, project: "03" }
+        annotations:
+          summary: "{{ $labels.service }} p99 latency is {{ $value | humanizeDuration }}"
+          description: "The slowest 1% of requests take longer than 1.5s."
+          runbook: projects/03-latency/README.md#runbook
+
+      - alert: ManySlowRequests
+        # le="1" in Prometheus 3, le="1.0" in Prometheus 2 -> regex handles both
+        expr: |
+          1 - (
+            sum by (service) (rate(http_request_duration_seconds_bucket{le=~"1(\\.0)?",route!="/healthz"}[5m]))
+            / sum by (service) (rate(http_request_duration_seconds_count{route!="/healthz"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels: { severity: warning, project: "03" }
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} of requests slower than 1s"
+          runbook: projects/03-latency/README.md#runbook

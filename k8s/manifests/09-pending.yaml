@@ -1,0 +1,15 @@
+# Requests more CPU than any kind node has -> Pending / Unschedulable
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: too-big, namespace: lab }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: too-big } }
+  template:
+    metadata: { labels: { app: too-big } }
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27-alpine
+          resources:
+            requests: { cpu: "64", memory: 64Mi }

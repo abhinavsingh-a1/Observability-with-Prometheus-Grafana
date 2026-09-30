@@ -1,0 +1,45 @@
+groups:
+  - name: 02-error-rate
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[5m]))
+            / sum by (service) (rate(http_requests_total{route!="/healthz"}[5m])) > 0.05
+        for: 2m
+        labels: { severity: warning, project: "02" }
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} of requests fail (5xx)"
+          description: "More than 5% server errors for 2 minutes."
+          runbook: projects/02-error-rate/README.md#runbook
+
+      - alert: VeryHighErrorRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5..",route!="/healthz"}[5m]))
+            / sum by (service) (rate(http_requests_total{route!="/healthz"}[5m])) > 0.20
+        for: 2m
+        labels: { severity: critical, project: "02" }
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} of requests fail (5xx)"
+          description: "More than 20% server errors - users are clearly affected."
+          runbook: projects/02-error-rate/README.md#runbook
+
+      - alert: HighClientErrorRate
+        # 4xx are usually the client's fault -> severity info (ticket, not page)
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"4..",route!="/healthz"}[10m]))
+            / sum by (service) (rate(http_requests_total{route!="/healthz"}[10m])) > 0.40
+        for: 10m
+        labels: { severity: info, project: "02" }
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} 4xx responses"
+          description: "Unusually many client errors. Broken client release, bad links or scraping?"
+          runbook: projects/02-error-rate/README.md#runbook
+
+      - alert: PaymentFailuresHigh
+        expr: sum by (service) (rate(payments_failed_total[10m])) * 60 > 5
+        for: 5m
+        labels: { severity: warning, project: "02" }
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanize }} payment failures per minute"
+          description: "Business-level failures are high even if HTTP looks fine."
+          runbook: projects/02-error-rate/README.md#runbook

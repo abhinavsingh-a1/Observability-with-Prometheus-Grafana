@@ -1,0 +1,18 @@
+# k8s variant of project 07: 2 busy CPUs vs a 100m limit -> heavy throttling
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: throttle-demo, namespace: lab }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: throttle-demo } }
+  template:
+    metadata: { labels: { app: throttle-demo } }
+    spec:
+      containers:
+        - name: app
+          image: polinux/stress
+          command: ["stress"]
+          args: ["--cpu", "2"]
+          resources:
+            requests: { cpu: 50m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }

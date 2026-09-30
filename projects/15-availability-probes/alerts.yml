@@ -1,0 +1,47 @@
+groups:
+  - name: 15-availability
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels: { severity: critical, project: "15" }
+        annotations:
+          summary: "Prometheus can't scrape {{ $labels.job }} / {{ $labels.instance }}"
+          description: "Process down, network blocked, or /metrics broken. You are blind for this target."
+          runbook: projects/15-availability-probes/README.md#runbook
+
+      - alert: EndpointDown
+        expr: probe_success{job!="blackbox-cert"} == 0
+        for: 1m
+        labels: { severity: critical, project: "15" }
+        annotations:
+          summary: "Probe {{ $labels.job }} failed for {{ $labels.instance }}"
+          description: "The endpoint does not answer like a user expects (down, wrong status code, DNS or TLS failure)."
+          runbook: projects/15-availability-probes/README.md#runbook
+
+      - alert: EndpointSlow
+        expr: probe_duration_seconds{job="blackbox-http"} > 2
+        for: 5m
+        labels: { severity: warning, project: "15" }
+        annotations:
+          summary: "{{ $labels.instance }} takes {{ $value | humanizeDuration }} to respond"
+          runbook: projects/15-availability-probes/README.md#runbook
+
+      - alert: SSLCertExpiringSoon
+        expr: |
+          (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+          and (probe_ssl_earliest_cert_expiry - time()) > 0
+        for: 10m
+        labels: { severity: warning, project: "15" }
+        annotations:
+          summary: "TLS certificate of {{ $labels.instance }} expires in {{ $value | humanize }} days"
+          runbook: projects/15-availability-probes/README.md#runbook
+
+      - alert: SSLCertExpired
+        expr: probe_ssl_earliest_cert_expiry - time() <= 0
+        for: 1m
+        labels: { severity: critical, project: "15" }
+        annotations:
+          summary: "TLS certificate of {{ $labels.instance }} has EXPIRED"
+          description: "In the lab this fires on purpose for https://expired.badssl.com."
+          runbook: projects/15-availability-probes/README.md#runbook

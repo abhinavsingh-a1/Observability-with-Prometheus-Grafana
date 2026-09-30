@@ -1,0 +1,13 @@
+# Image tag that doesn't exist -> ErrImagePull / ImagePullBackOff
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: imagepull-demo, namespace: lab }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: imagepull-demo } }
+  template:
+    metadata: { labels: { app: imagepull-demo } }
+    spec:
+      containers:
+        - name: app
+          image: nginx:this-tag-does-not-exist

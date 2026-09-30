@@ -1,0 +1,45 @@
+groups:
+  - name: 14-kafka
+    rules:
+      - alert: KafkaConsumerLagHigh
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag_sum) > 1000
+        for: 2m
+        labels: { severity: warning, project: "14" }
+        annotations:
+          summary: "Group {{ $labels.consumergroup }} is {{ $value }} messages behind on {{ $labels.topic }}"
+          runbook: projects/14-message-queue-lag/README.md#runbook
+
+      - alert: KafkaConsumerLagGrowing
+        # Lag keeps increasing: consumers are slower than producers.
+        expr: delta(kafka_consumergroup_lag_sum[10m]) > 0 and kafka_consumergroup_lag_sum > 100
+        for: 10m
+        labels: { severity: warning, project: "14" }
+        annotations:
+          summary: "Lag of {{ $labels.consumergroup }} on {{ $labels.topic }} has grown for 10+ minutes"
+          runbook: projects/14-message-queue-lag/README.md#runbook
+
+      - alert: KafkaConsumerGroupNoMembers
+        expr: kafka_consumergroup_members == 0 and on (consumergroup) sum by (consumergroup) (kafka_consumergroup_lag_sum) > 0
+        for: 2m
+        labels: { severity: critical, project: "14" }
+        annotations:
+          summary: "Consumer group {{ $labels.consumergroup }} has no active consumers but pending messages"
+          runbook: projects/14-message-queue-lag/README.md#runbook
+
+      - alert: KafkaTimeToDrainLong
+        expr: |
+          sum by (consumergroup, topic) (kafka_consumergroup_lag_sum)
+            / sum by (consumergroup, topic) (rate(kafka_consumergroup_current_offset_sum[5m])) > 600
+        for: 5m
+        labels: { severity: warning, project: "14" }
+        annotations:
+          summary: "{{ $labels.consumergroup }} needs {{ $value | humanizeDuration }} to catch up"
+          runbook: projects/14-message-queue-lag/README.md#runbook
+
+      - alert: KafkaBrokerDown
+        expr: kafka_brokers < 1
+        for: 1m
+        labels: { severity: critical, project: "14" }
+        annotations:
+          summary: "Kafka cluster reports {{ $value }} brokers"
+          runbook: projects/14-message-queue-lag/README.md#runbook

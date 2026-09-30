@@ -1,0 +1,42 @@
+groups:
+  - name: 12-network
+    rules:
+      - alert: HostNetworkErrors
+        expr: |
+          (rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m]))
+            / (rate(node_network_receive_packets_total[5m]) + rate(node_network_transmit_packets_total[5m])) > 0.01
+        for: 5m
+        labels: { severity: warning, project: "12" }
+        annotations:
+          summary: "{{ $labels.device }} on {{ $labels.instance }} has {{ $value | humanizePercentage }} packet errors"
+          description: "Bad cable/NIC/driver or MTU mismatch."
+          runbook: projects/12-network/README.md#runbook
+
+      - alert: HostTcpRetransmitsHigh
+        expr: |
+          rate(node_netstat_Tcp_RetransSegs[5m]) / rate(node_netstat_Tcp_OutSegs[5m]) > 0.02
+          and rate(node_netstat_Tcp_OutSegs[5m]) > 100
+        for: 5m
+        labels: { severity: warning, project: "12" }
+        annotations:
+          summary: "{{ $labels.instance }} retransmits {{ $value | humanizePercentage }} of TCP segments"
+          description: "Packet loss or congestion somewhere on the path."
+          runbook: projects/12-network/README.md#runbook
+
+      - alert: HostConntrackNearLimit
+        expr: node_nf_conntrack_entries / node_nf_conntrack_entries_limit > 0.8
+        for: 5m
+        labels: { severity: critical, project: "12" }
+        annotations:
+          summary: "Conntrack table {{ $value | humanizePercentage }} full on {{ $labels.instance }}"
+          description: "When full, NEW connections are silently dropped."
+          runbook: projects/12-network/README.md#runbook
+
+      - alert: ContainerUnusualEgress
+        # 50 MB/s sustained egress from one container: runaway job or data exfiltration?
+        expr: sum by (name) (rate(container_network_transmit_bytes_total{name=~"lab-.+"}[2m])) > 50e6
+        for: 2m
+        labels: { severity: warning, project: "12" }
+        annotations:
+          summary: "{{ $labels.name }} sends {{ $value | humanize }}B/s"
+          runbook: projects/12-network/README.md#runbook

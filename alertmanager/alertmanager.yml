@@ -1,0 +1,42 @@
+# Alertmanager routes alerts from Prometheus to receivers.
+# In the lab everything goes to `alert-logger` (docker logs -f lab-alert-logger).
+# Real receivers (Slack, email, PagerDuty) are shown commented out below.
+
+route:
+  receiver: alert-logger
+  group_by: [alertname, service]   # one notification per alert+service
+  group_wait: 10s                  # wait to batch the first notification
+  group_interval: 1m               # wait before notifying about new alerts in a group
+  repeat_interval: 1h              # re-send if still firing
+  routes:
+    - matchers: [severity="critical"]
+      receiver: alert-logger       # e.g. switch to pagerduty in production
+      continue: false
+
+# A critical alert silences the matching warning (no double paging).
+inhibit_rules:
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: [alertname, service]
+
+receivers:
+  - name: alert-logger
+    webhook_configs:
+      - url: http://alert-logger:5001/
+        send_resolved: true
+
+  # - name: slack
+  #   slack_configs:
+  #     - api_url: https://hooks.slack.com/services/XXX/YYY/ZZZ
+  #       channel: "#alerts"
+  #       send_resolved: true
+  #       title: '{{ .CommonLabels.alertname }} ({{ .Status }})'
+  #       text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+  #
+  # - name: email
+  #   email_configs:
+  #     - to: oncall@example.com
+  #       from: alertmanager@example.com
+  #       smarthost: smtp.example.com:587
+  #       auth_username: alertmanager@example.com
+  #       auth_password: change-me

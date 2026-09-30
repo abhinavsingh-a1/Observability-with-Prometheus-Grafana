@@ -1,0 +1,34 @@
+# Helm values for prometheus-community/kube-prometheus-stack
+grafana:
+  adminPassword: admin
+  service: { type: NodePort, nodePort: 30000 }
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard     # ConfigMaps with this label become dashboards
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider: { foldersFromFilesStructure: true }
+
+prometheus:
+  service: { type: NodePort, nodePort: 30090 }
+  prometheusSpec:
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    # Pick up ServiceMonitors / PrometheusRules from ANY namespace without
+    # requiring the Helm release label.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 7d
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+
+# kind's control-plane components are not reachable on default ports; silence noise
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }

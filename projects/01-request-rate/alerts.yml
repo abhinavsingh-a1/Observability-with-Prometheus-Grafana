@@ -1,0 +1,37 @@
+groups:
+  - name: 01-request-rate
+    rules:
+      - alert: TrafficDrop
+        # Current 2m rate is less than half of the 30m average.
+        # Needs >=30m of history (quiet during the first half hour after start).
+        expr: |
+          sum by (service) (rate(http_requests_total{route!="/healthz"}[2m]))
+            < 0.5 * sum by (service) (rate(http_requests_total{route!="/healthz"}[30m]))
+          and sum by (service) (rate(http_requests_total{route!="/healthz"}[30m])) > 1
+        for: 2m
+        labels: { severity: warning, project: "01" }
+        annotations:
+          summary: "Traffic to {{ $labels.service }} dropped by more than 50%"
+          description: "Request rate is {{ $value | humanize }} req/s, less than half its 30m average. Check upstream (load balancer, DNS, clients)."
+          runbook: projects/01-request-rate/README.md#runbook
+
+      - alert: TrafficSpike
+        expr: |
+          sum by (service) (rate(http_requests_total{route!="/healthz"}[2m]))
+            > 2 * sum by (service) (rate(http_requests_total{route!="/healthz"}[30m]))
+          and sum by (service) (rate(http_requests_total{route!="/healthz"}[2m])) > 5
+        for: 2m
+        labels: { severity: warning, project: "01" }
+        annotations:
+          summary: "Traffic to {{ $labels.service }} more than doubled"
+          description: "Request rate is {{ $value | humanize }} req/s, over 2x the 30m average. Marketing event, retry storm or abuse?"
+          runbook: projects/01-request-rate/README.md#runbook
+
+      - alert: NoTraffic
+        expr: sum by (service) (rate(http_requests_total{route!="/healthz"}[5m])) == 0
+        for: 5m
+        labels: { severity: critical, project: "01" }
+        annotations:
+          summary: "{{ $labels.service }} receives no traffic at all"
+          description: "Zero requests for 5 minutes. The service may be unreachable or taken out of the load balancer."
+          runbook: projects/01-request-rate/README.md#runbook

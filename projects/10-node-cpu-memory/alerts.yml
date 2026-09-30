@@ -1,0 +1,59 @@
+groups:
+  - name: 10-node-cpu-memory
+    rules:
+      - alert: HostHighCpu
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.85
+        for: 5m
+        labels: { severity: warning, project: "10" }
+        annotations:
+          summary: "Host {{ $labels.instance }} CPU is {{ $value | humanizePercentage }} busy"
+          runbook: projects/10-node-cpu-memory/README.md#runbook
+
+      - alert: HostHighIowait
+        expr: avg by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) > 0.2
+        for: 10m
+        labels: { severity: warning, project: "10" }
+        annotations:
+          summary: "Host {{ $labels.instance }} spends {{ $value | humanizePercentage }} of CPU time waiting for disk"
+          runbook: projects/10-node-cpu-memory/README.md#runbook
+
+      - alert: HostMemoryLow
+        # Lab threshold 15% (production: often 10%)
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.15
+        for: 2m
+        labels: { severity: warning, project: "10" }
+        annotations:
+          summary: "Host {{ $labels.instance }} has only {{ $value | humanizePercentage }} memory available"
+          runbook: projects/10-node-cpu-memory/README.md#runbook
+
+      - alert: HostHighLoad
+        expr: |
+          node_load5 / on (instance) count by (instance) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 10m
+        labels: { severity: warning, project: "10" }
+        annotations:
+          summary: "Host {{ $labels.instance }} load is {{ $value | humanize }}x its core count"
+          runbook: projects/10-node-cpu-memory/README.md#runbook
+
+      - alert: HostMemoryPressure
+        # PSI: tasks were stalled on memory more than 10% of the time
+        expr: rate(node_pressure_memory_waiting_seconds_total[5m]) > 0.10
+        for: 5m
+        labels: { severity: warning, project: "10" }
+        annotations:
+          summary: "Host {{ $labels.instance }} is under memory pressure ({{ $value | humanizePercentage }} stalled)"
+          runbook: projects/10-node-cpu-memory/README.md#runbook
+
+      - alert: HostOomKillDetected
+        expr: increase(node_vmstat_oom_kill[5m]) > 0
+        labels: { severity: warning, project: "10" }
+        annotations:
+          summary: "The kernel OOM-killed a process on {{ $labels.instance }}"
+          runbook: projects/10-node-cpu-memory/README.md#runbook
+
+      - alert: HostRebooted
+        expr: time() - node_boot_time_seconds < 600
+        labels: { severity: info, project: "10" }
+        annotations:
+          summary: "Host {{ $labels.instance }} rebooted less than 10 minutes ago"
+          runbook: projects/10-node-cpu-memory/README.md#runbook

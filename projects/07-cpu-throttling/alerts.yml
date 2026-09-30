@@ -1,0 +1,31 @@
+groups:
+  - name: 07-cpu-throttling
+    rules:
+      - alert: ContainerCpuThrottlingHigh
+        expr: |
+          sum by (name) (rate(container_cpu_cfs_throttled_periods_total{name=~"lab-.+"}[5m]))
+            / sum by (name) (rate(container_cpu_cfs_periods_total{name=~"lab-.+"}[5m])) > 0.25
+        for: 5m
+        labels: { severity: warning, project: "07" }
+        annotations:
+          summary: "{{ $labels.name }} is CPU-throttled in {{ $value | humanizePercentage }} of periods"
+          description: "The container hits its CPU limit repeatedly. Expect higher latency."
+          runbook: projects/07-cpu-throttling/README.md#runbook
+
+      - alert: ThrottlingHurtsLatency
+        # Correlation alert: orders-api is throttled AND its p95 latency is high
+        expr: |
+          (
+            sum(rate(container_cpu_cfs_throttled_periods_total{name="lab-orders-api"}[5m]))
+            / sum(rate(container_cpu_cfs_periods_total{name="lab-orders-api"}[5m])) > 0.25
+          )
+          and on ()
+          (
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="orders-api",route!="/healthz"}[5m]))) > 0.3
+          )
+        for: 3m
+        labels: { severity: warning, project: "07", service: orders-api }
+        annotations:
+          summary: "orders-api is slow because it is CPU-throttled"
+          description: "Raise the CPU limit (or remove it) or reduce CPU work per request."
+          runbook: projects/07-cpu-throttling/README.md#runbook

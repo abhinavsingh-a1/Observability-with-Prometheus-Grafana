@@ -1,0 +1,97 @@
+groups:
+  - name: 13-postgres
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: critical, project: "13" }
+        annotations:
+          summary: "PostgreSQL is down (exporter {{ $labels.instance }} can't connect)"
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: PostgresTooManyConnections
+        expr: |
+          sum by (instance) (pg_stat_activity_count)
+            / on (instance) max by (instance) (pg_settings_max_connections) > 0.8
+        for: 2m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "PostgreSQL uses {{ $value | humanizePercentage }} of max_connections"
+          description: "New connections will soon fail with 'too many clients'. Use a pool (PgBouncer)."
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: PostgresLongRunningTransaction
+        # Lab threshold 60s (production: 5-30 minutes depending on workload)
+        expr: max by (instance, datname) (pg_stat_activity_max_tx_duration{datname!=""}) > 60
+        for: 1m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "Transaction in {{ $labels.datname }} running for {{ $value | humanizeDuration }}"
+          description: "Blocks VACUUM (table bloat) and may hold locks."
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: PostgresLowCacheHitRatio
+        expr: |
+          sum by (instance, datname) (rate(pg_stat_database_blks_hit[10m]))
+            / (sum by (instance, datname) (rate(pg_stat_database_blks_hit[10m])) + sum by (instance, datname) (rate(pg_stat_database_blks_read[10m])))
+            < 0.90
+          and sum by (instance, datname) (rate(pg_stat_database_blks_read[10m])) > 100
+        for: 10m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "{{ $labels.datname }} cache hit ratio is {{ $value | humanizePercentage }}"
+          description: "Working set doesn't fit in shared_buffers; queries hit disk."
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: PostgresDeadlocks
+        expr: increase(pg_stat_database_deadlocks{datname!~"template.*"}[5m]) > 0
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "Deadlocks detected in {{ $labels.datname }}"
+          runbook: projects/13-databases/README.md#runbook
+
+  - name: 13-redis
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: { severity: critical, project: "13" }
+        annotations:
+          summary: "Redis is down"
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: RedisMemoryNearMax
+        expr: redis_memory_used_bytes / (redis_memory_max_bytes > 0) > 0.9
+        for: 2m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "Redis uses {{ $value | humanizePercentage }} of maxmemory"
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: RedisEvictingKeys
+        expr: rate(redis_evicted_keys_total[5m]) > 0
+        for: 2m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "Redis is evicting {{ $value | humanize }} keys/s"
+          description: "Cache is too small: evictions -> misses -> more DB load."
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: RedisLowHitRatio
+        expr: |
+          rate(redis_keyspace_hits_total[10m])
+            / (rate(redis_keyspace_hits_total[10m]) + rate(redis_keyspace_misses_total[10m])) < 0.8
+          and (rate(redis_keyspace_hits_total[10m]) + rate(redis_keyspace_misses_total[10m])) > 10
+        for: 10m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "Redis hit ratio {{ $value | humanizePercentage }}"
+          runbook: projects/13-databases/README.md#runbook
+
+      - alert: RedisTooManyClients
+        expr: redis_connected_clients / redis_config_maxclients > 0.8
+        for: 2m
+        labels: { severity: warning, project: "13" }
+        annotations:
+          summary: "Redis uses {{ $value | humanizePercentage }} of maxclients"
+          runbook: projects/13-databases/README.md#runbook
